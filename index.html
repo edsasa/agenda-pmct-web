@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agenda Psicología - PMCT</title>
+  <title>Calendario Psicología - WEB Final Estable</title>
   <style>
     :root {
       --primary: #6B3B73;
@@ -1966,6 +1966,7 @@
     const STORAGE_KEY = "psicologia_calendar_json_v1";
     const SESSION_KEY = "psicologia_calendar_current_user";
     const GOOGLE_SESSION_KEY = "psicologia_calendar_google_session";
+    const PREFERRED_GOOGLE_EMAIL_KEY = "psicologia_calendar_preferred_google_email";
 
     /*
       ================================================================
@@ -2227,7 +2228,10 @@
       if (message) {
         els.authDriveStatus.textContent = message;
       } else if (isGoogleConfigured()) {
-        els.authDriveStatus.textContent = "Tus datos se cargarán desde Google Drive y se guardarán automáticamente. Acceso restringido a cuentas autorizadas.";
+        const preferredEmail = getPreferredGoogleEmail();
+        els.authDriveStatus.textContent = preferredEmail
+          ? `Cuenta principal recordada: ${preferredEmail}. En este dispositivo el acceso será más rápido cuando Google lo permita.`
+          : "Tus datos se cargarán desde Google Drive y se guardarán automáticamente. Acceso restringido a cuentas autorizadas.";
       } else if (ENABLE_LOCAL_FALLBACK_WHEN_GOOGLE_NOT_CONFIGURED) {
         els.authDriveStatus.textContent = "Falta configurar GOOGLE_CONFIG.clientId. Mientras tanto puedes entrar en modo local temporal para seguir probando la web.";
       } else {
@@ -2260,6 +2264,26 @@
       const normalizedEmail = cleanEmail(email || "");
       if (!normalizedEmail) return false;
       return getAuthorizedGoogleEmails().includes(normalizedEmail);
+    }
+
+    function getPreferredGoogleEmail() {
+      const saved = cleanEmail(localStorage.getItem(PREFERRED_GOOGLE_EMAIL_KEY) || "");
+      return isAuthorizedGoogleEmail(saved) ? saved : "";
+    }
+
+    function rememberPreferredGoogleEmail(email) {
+      const normalizedEmail = cleanEmail(email || "");
+      if (!normalizedEmail || !isAuthorizedGoogleEmail(normalizedEmail)) return;
+      localStorage.setItem(PREFERRED_GOOGLE_EMAIL_KEY, normalizedEmail);
+    }
+
+    function clearPreferredGoogleEmail() {
+      localStorage.removeItem(PREFERRED_GOOGLE_EMAIL_KEY);
+    }
+
+    function getGoogleLoginPromptMode() {
+      if (hasValidGoogleSession()) return "";
+      return getPreferredGoogleEmail() ? "" : "select_account consent";
     }
 
     async function revokeGoogleAccessToken(accessToken) {
@@ -2325,6 +2349,7 @@
       if (!(window.google && google.accounts && google.accounts.oauth2)) throw new Error("Google Identity Services no está disponible en este navegador.");
       return await new Promise((resolve, reject) => {
         try {
+          const preferredEmail = getPreferredGoogleEmail();
           const tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: GOOGLE_CONFIG.clientId,
             scope: GOOGLE_CONFIG.driveScope,
@@ -2333,7 +2358,9 @@
               resolve(response);
             }
           });
-          tokenClient.requestAccessToken({ prompt });
+          const requestOptions = { prompt };
+          if (preferredEmail) requestOptions.login_hint = preferredEmail;
+          tokenClient.requestAccessToken(requestOptions);
         } catch (error) {
           reject(error);
         }
@@ -2574,7 +2601,7 @@
       try {
         updateAuthDriveStatus("Conectando con Google...");
         await ensureGapiClient();
-        const tokenResponse = await requestGoogleAccessToken(hasValidGoogleSession() ? "" : "select_account consent");
+        const tokenResponse = await requestGoogleAccessToken(getGoogleLoginPromptMode());
         state.googleAccessToken = tokenResponse.access_token;
         gapi.client.setToken({ access_token: state.googleAccessToken });
         const fallbackProfile = {
@@ -2605,9 +2632,11 @@
           state.googleProfile = null;
           state.googleSessionExpiresAt = 0;
           sessionStorage.removeItem(SESSION_KEY);
+          if (profile.email && cleanEmail(profile.email) === cleanEmail(localStorage.getItem(PREFERRED_GOOGLE_EMAIL_KEY) || "")) clearPreferredGoogleEmail();
           throw new Error("Acceso restringido. Esta cuenta no está autorizada para usar Agenda PMCT.");
         }
         saveGoogleSession(tokenResponse, profile);
+        rememberPreferredGoogleEmail(profile.email || "");
         state.googleProfile = profile;
 
         if (!canReuseDriveFileIdForProfile(profile)) {
@@ -2774,11 +2803,13 @@
             clearGoogleSession();
             state.currentUser = null;
             sessionStorage.removeItem(SESSION_KEY);
+            if (cleanEmail(localStorage.getItem(PREFERRED_GOOGLE_EMAIL_KEY) || "") === restoredEmail) clearPreferredGoogleEmail();
             updateAuthDriveStatus("Acceso restringido. Esta cuenta no está autorizada para usar Agenda PMCT.");
             return;
           }
           state.googleAccessToken = parsed.accessToken;
           state.googleProfile = parsed.profile || null;
+          rememberPreferredGoogleEmail(restoredEmail);
           state.googleSessionExpiresAt = Number(parsed.expiresAt || 0);
           const savedId = Number(sessionStorage.getItem(SESSION_KEY));
           if (savedId) {
