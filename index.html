@@ -2721,12 +2721,30 @@
       els.resetPatientFormBtn.addEventListener("click", resetPatientForm);
       els.patientSearch.addEventListener("input", renderPatients);
       [els.patientCellPhone, els.patientEmergencyPhone].forEach(input => { input.addEventListener("input", () => { input.value = normalizePhone(input.value).slice(0, 10); }); });
-      [els.patientName, els.patientLastName, els.patientEmergencyFirstName, els.patientEmergencyLastName, els.patientInitialDiagnosis, els.patientInsuranceUserId, els.patientCompany, els.insuranceName].forEach(input => {
+      [els.patientInitialDiagnosis, els.patientInsuranceUserId].forEach(input => {
         if (!input) return;
         input.addEventListener("input", () => {
           const start = input.selectionStart;
           const end = input.selectionEnd;
           input.value = input.value.toLocaleUpperCase('es-MX');
+          try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+      });
+      [els.patientName, els.patientLastName, els.patientEmergencyFirstName, els.patientEmergencyLastName].forEach(input => {
+        if (!input) return;
+        input.addEventListener("input", () => {
+          const start = input.selectionStart;
+          const end = input.selectionEnd;
+          input.value = sanitizePersonName(input.value);
+          try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+      });
+      [els.patientCompany, els.insuranceName].forEach(input => {
+        if (!input) return;
+        input.addEventListener("input", () => {
+          const start = input.selectionStart;
+          const end = input.selectionEnd;
+          input.value = sanitizeBusinessName(input.value);
           try { input.setSelectionRange(start, end); } catch (_) {}
         });
       });
@@ -2877,8 +2895,10 @@
       event.preventDefault();
       if (!requireUser()) return;
       const insuranceId = Number(els.insuranceId.value || 0);
-      const name = upperCleanSpaces(els.insuranceName.value);
+      const name = sanitizeBusinessName(els.insuranceName.value);
+      els.insuranceName.value = name;
       if (!name) return toast("Escribe el nombre del seguro.", "error");
+      if (containsDigits(name)) return toast("El nombre de la aseguradora no puede contener números.", "error");
 
       const duplicate = userInsurances().find(i => normalizeNameLoose(i.name) === normalizeNameLoose(name) && i.id !== insuranceId);
       if (duplicate) return toast("Ese seguro ya está en tu catálogo.", "error");
@@ -2939,7 +2959,7 @@ function renderInsuranceList() {
       const insurance = userInsurances().find(i => i.id === id);
       if (!insurance) return;
       els.insuranceId.value = insurance.id;
-      els.insuranceName.value = (insurance.name || "").toLocaleUpperCase('es-MX');
+      els.insuranceName.value = sanitizeBusinessName(insurance.name || "");
       els.insuranceName.focus();
     }
 
@@ -3666,9 +3686,9 @@ function renderCalendar() {
               </div>
               <div class="auth-actions">
                 <button class="btn secondary small" type="button" onclick="editAppointment(${app.id})">Editar</button>
-                ${app.status === "CANCELADA"
-                  ? `<button class="btn aqua small" type="button" onclick="reactivateAppointment(${app.id})">Reactivar</button>`
-                  : `<button class="btn danger small" type="button" onclick="cancelAppointment(${app.id})">CANCELAR CITA</button>`}
+                ${canCancelAppointment(app)
+                  ? `<button class="btn danger small" type="button" onclick="cancelAppointment(${app.id})">CANCELAR CITA</button>`
+                  : `<button class="btn secondary small" type="button" disabled>No cancelable</button>`}
               </div>
             </div>
             ${app.notes ? `<div class="tiny-note">Notas: ${escapeHtml(app.notes)}</div>` : `<div class="tiny-note">Sin notas registradas.</div>`}
@@ -4173,6 +4193,14 @@ function renderCalendar() {
       return dt ? new Date() >= dt : false;
     }
 
+
+    function canCancelAppointment(appointment) {
+      if (!appointment) return false;
+      if (isPastDate(appointment.date)) return false;
+      if (isPastTimeToday(appointment.date, appointment.time)) return false;
+      return true;
+    }
+
     function dateToISO(date) {
       const offset = date.getTimezoneOffset();
       const local = new Date(date.getTime() - offset * 60000);
@@ -4250,6 +4278,28 @@ function renderCalendar() {
 
     function normalizeNameLoose(value) {
       return stripAccents(cleanSpaces(value)).toUpperCase().replace(/[^A-Z0-9Ñ ]/g, " ").replace(/\s+/g, " ").trim();
+    }
+
+    function containsDigits(value) {
+      return /\d/.test(String(value ?? ""));
+    }
+
+    function sanitizePersonName(value) {
+      return String(value ?? "")
+        .toLocaleUpperCase('es-MX')
+        .replace(/\d+/g, "")
+        .replace(/[^A-ZÁÉÍÓÚÜÑ'’\-. ]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function sanitizeBusinessName(value) {
+      return String(value ?? "")
+        .toLocaleUpperCase('es-MX')
+        .replace(/\d+/g, "")
+        .replace(/[^A-ZÁÉÍÓÚÜÑ&'’\-.,()/ ]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     function normalizePhone(value) {
@@ -4345,12 +4395,30 @@ function renderCalendar() {
       els.resetPatientFormBtn.addEventListener("click", resetPatientForm);
       els.patientSearch.addEventListener("input", renderPatients);
       [els.patientCellPhone, els.patientEmergencyPhone].forEach(input => { input.addEventListener("input", () => { input.value = normalizePhone(input.value).slice(0, 10); }); });
-      [els.patientName, els.patientLastName, els.patientEmergencyFirstName, els.patientEmergencyLastName, els.patientInitialDiagnosis, els.patientInsuranceUserId, els.patientCompany, els.insuranceName].forEach(input => {
+      [els.patientInitialDiagnosis, els.patientInsuranceUserId].forEach(input => {
         if (!input) return;
         input.addEventListener("input", () => {
           const start = input.selectionStart;
           const end = input.selectionEnd;
           input.value = input.value.toLocaleUpperCase('es-MX');
+          try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+      });
+      [els.patientName, els.patientLastName, els.patientEmergencyFirstName, els.patientEmergencyLastName].forEach(input => {
+        if (!input) return;
+        input.addEventListener("input", () => {
+          const start = input.selectionStart;
+          const end = input.selectionEnd;
+          input.value = sanitizePersonName(input.value);
+          try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+      });
+      [els.patientCompany, els.insuranceName].forEach(input => {
+        if (!input) return;
+        input.addEventListener("input", () => {
+          const start = input.selectionStart;
+          const end = input.selectionEnd;
+          input.value = sanitizeBusinessName(input.value);
           try { input.setSelectionRange(start, end); } catch (_) {}
         });
       });
@@ -4462,18 +4530,18 @@ function renderCalendar() {
       return {
         userId: state.currentUser.id,
         entryType: els.patientEntryType.value,
-        firstName: upperCleanSpaces(els.patientName.value),
-        lastName: upperCleanSpaces(els.patientLastName.value),
+        firstName: sanitizePersonName(els.patientName.value),
+        lastName: sanitizePersonName(els.patientLastName.value),
         birthDate: els.patientBirthDate.value,
         firstSessionDate: els.patientEntryType.value === "NUEVO" ? els.patientFirstSessionDate.value : "",
         cellPhone: normalizePhone(els.patientCellPhone.value),
         email: cleanEmail(els.patientEmail.value),
-        emergencyFirstName: upperCleanSpaces(els.patientEmergencyFirstName.value),
-        emergencyLastName: upperCleanSpaces(els.patientEmergencyLastName.value),
+        emergencyFirstName: sanitizePersonName(els.patientEmergencyFirstName.value),
+        emergencyLastName: sanitizePersonName(els.patientEmergencyLastName.value),
         emergencyPhone: normalizePhone(els.patientEmergencyPhone.value),
         initialDiagnosis: upperCleanSpaces(els.patientInitialDiagnosis.value),
         careType,
-        company: careType === "SEGURO" ? upperCleanSpaces(els.patientCompany.value) : "",
+        company: careType === "SEGURO" ? sanitizeBusinessName(els.patientCompany.value) : "",
         insuranceId,
         insuranceUserId: careType === "SEGURO" ? upperCleanSpaces(els.patientInsuranceUserId.value) : "",
         notes: cleanSpaces(els.patientNotes.value),
@@ -4488,7 +4556,9 @@ function renderCalendar() {
       const errors = [];
 
       if (!payload.firstName) errors.push([els.patientName, "El nombre es obligatorio."]);
+      else if (containsDigits(payload.firstName)) errors.push([els.patientName, "El nombre no puede contener números."]);
       if (!payload.lastName) errors.push([els.patientLastName, "Los apellidos son obligatorios."]);
+      else if (containsDigits(payload.lastName)) errors.push([els.patientLastName, "Los apellidos no pueden contener números."]);
       if (!payload.birthDate) {
         errors.push([els.patientBirthDate, "La fecha de nacimiento es obligatoria."]);
       } else if (payload.birthDate > maxBirth) {
@@ -4508,7 +4578,9 @@ function renderCalendar() {
         errors.push([els.patientEmail, "El correo electrónico no tiene un formato válido."]);
       }
       if (!payload.emergencyFirstName) errors.push([els.patientEmergencyFirstName, "El nombre del contacto de emergencia es obligatorio."]);
+      else if (containsDigits(payload.emergencyFirstName)) errors.push([els.patientEmergencyFirstName, "El nombre del contacto de emergencia no puede contener números."]);
       if (!payload.emergencyLastName) errors.push([els.patientEmergencyLastName, "Los apellidos del contacto de emergencia son obligatorios."]);
+      else if (containsDigits(payload.emergencyLastName)) errors.push([els.patientEmergencyLastName, "Los apellidos del contacto de emergencia no pueden contener números."]);
       if (!payload.emergencyPhone) {
         errors.push([els.patientEmergencyPhone, "El número de emergencia es obligatorio."]);
       } else if (!/^\d{10}$/.test(payload.emergencyPhone)) {
@@ -4518,6 +4590,8 @@ function renderCalendar() {
       }
       if (payload.careType === "SEGURO" && !payload.company) {
         errors.push([els.patientCompany, "Captura la EMPRESA del paciente de aseguradora."]);
+      } else if (payload.careType === "SEGURO" && containsDigits(payload.company)) {
+        errors.push([els.patientCompany, "La EMPRESA no puede contener números."]);
       }
       if (payload.careType === "SEGURO" && !payload.insuranceId) {
         errors.push([els.patientInsuranceId, "Selecciona una aseguradora para el paciente."]);
@@ -4842,9 +4916,9 @@ function renderCalendar() {
               <div class="auth-actions">
                 <button class="btn secondary small" type="button" onclick="editAppointment(${app.id})">Editar</button>
                 <button class="btn aqua small" type="button" onclick="openClinicalFromAppointment(${app.id})">Expediente</button>
-                ${app.status === "CANCELADA"
-                  ? `<button class="btn aqua small" type="button" onclick="reactivateAppointment(${app.id})">Reactivar</button>`
-                  : `<button class="btn danger small" type="button" onclick="cancelAppointment(${app.id})">CANCELAR CITA</button>`}
+                ${canCancelAppointment(app)
+                  ? `<button class="btn danger small" type="button" onclick="cancelAppointment(${app.id})">CANCELAR CITA</button>`
+                  : `<button class="btn secondary small" type="button" disabled>No cancelable</button>`}
               </div>
             </div>
             ${app.notes ? `<div class="tiny-note">Notas: ${escapeHtml(app.notes)}</div>` : `<div class="tiny-note">Sin notas registradas.</div>`}
@@ -4963,11 +5037,30 @@ function renderCalendar() {
     function cancelAppointment(id) {
       const appointment = userAppointments().find(a => a.id === id);
       if (!appointment) return toast("No se encontró la cita.", "error");
-      const confirmed = window.confirm(`Se cancelará la cita de las ${appointment.time}. El horario quedará libre y el capítulo clínico asociado se eliminará. ¿Deseas continuar?`);
+      if (!canCancelAppointment(appointment)) {
+        return toast("Las citas anteriores al momento actual ya no pueden cancelarse.", "error");
+      }
+      const linkedChapter = userClinicalChapters().find(ch => ch.appointmentId === appointment.id);
+      const hasClinicalData = !!(linkedChapter && (cleanSpaces(linkedChapter.authorizationNumber) || cleanSpaces(linkedChapter.diagnosis) || cleanSpaces(linkedChapter.clinicalNotes) || cleanSpaces(linkedChapter.observations) || cleanSpaces(linkedChapter.tasks)));
+      const confirmed = window.confirm(
+        hasClinicalData
+          ? `La cita de las ${appointment.time} ya contiene información clínica. Si continúas, se eliminará definitivamente la cita y toda la información asociada a esa sesión. ¿Deseas continuar?`
+          : `Se eliminará definitivamente la cita de las ${appointment.time}. También se borrará toda la información asociada a esa sesión y el horario quedará libre. ¿Deseas continuar?`
+      );
       if (!confirmed) return;
-      appointment.status = "CANCELADA";
-      appointment.updatedAt = nowISO();
-      synchronizeAllClinicalChapters();
+
+      DB.appointments = DB.appointments.filter(app => !(app.userId === state.currentUser.id && app.id === appointment.id));
+      DB.clinicalChapters = (DB.clinicalChapters || []).filter(ch => !(ch.userId === state.currentUser.id && ch.appointmentId === appointment.id));
+
+      if (state.selectedClinicalChapterId && !(DB.clinicalChapters || []).some(ch => ch.id === state.selectedClinicalChapterId && ch.userId === state.currentUser.id)) {
+        state.selectedClinicalChapterId = null;
+      }
+      if (Number(els.appointmentId?.value || 0) === appointment.id) {
+        resetAppointmentForm();
+      }
+      if (state.selectedClinicalPatientId === appointment.patientId) {
+        reindexClinicalSessions(appointment.patientId);
+      }
       persistDB();
       renderCalendar();
       renderSelectedDateDetail();
@@ -4975,24 +5068,11 @@ function renderCalendar() {
       renderClinicalChapterList();
       renderClinicalPatientResults();
       resetClinicalForm();
-      toast("Cita cancelada, horario liberado y capítulo clínico eliminado.", "success");
+      toast("Cita eliminada definitivamente y horario liberado.", "success");
     }
 
     function reactivateAppointment(id) {
-      const appointment = userAppointments().find(a => a.id === id);
-      if (!appointment) return toast("No se encontró la cita.", "error");
-      const conflict = userAppointments().find(a => a.id !== id && a.date === appointment.date && a.time === appointment.time && a.status !== "CANCELADA");
-      if (conflict) return toast("Ese horario ya fue ocupado por otra cita activa y no puede reactivarse.", "error");
-      appointment.status = "AGENDADA";
-      appointment.updatedAt = nowISO();
-      synchronizeAllClinicalChapters();
-      persistDB();
-      renderCalendar();
-      renderSelectedDateDetail();
-      renderClinicalPatientSummary();
-      renderClinicalChapterList();
-      renderClinicalPatientResults();
-      toast("Cita reactivada y capítulo clínico restaurado.", "success");
+      return toast("Las citas canceladas se eliminan definitivamente y ya no pueden reactivarse.", "error");
     }
 
     function deleteOrDeactivatePatient(id) {
