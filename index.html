@@ -2300,6 +2300,16 @@
       renderDriveSyncInfo();
     }
 
+    function canReuseDriveFileIdForProfile(profile = {}) {
+      const meta = getDriveMeta();
+      const email = cleanEmail(profile.email || "");
+      const sub = cleanSpaces(profile.sub || "");
+      if (!meta.fileId) return false;
+      if (meta.ownerGoogleSub && sub && meta.ownerGoogleSub === sub) return true;
+      if (meta.ownerEmail && email && cleanEmail(meta.ownerEmail) === email) return true;
+      return false;
+    }
+
     async function requestGoogleAccessToken(prompt = "select_account consent") {
       if (!isGoogleConfigured()) throw new Error("Configura GOOGLE_CONFIG.clientId antes de usar Google.");
       if (!(window.google && google.accounts && google.accounts.oauth2)) throw new Error("Google Identity Services no está disponible en este navegador.");
@@ -2444,26 +2454,70 @@
     }
 
     async function pullDBFromDrive({ createIfMissing = true } = {}) {
-      const profile = state.googleProfile || {};
-      const found = state.driveFileId ? { id: state.driveFileId } : await findDriveFileByName();
-      if (!found?.id) {
-        if (!createIfMissing) return false;
-        ensurePrincipalUserFromProfile(profile);
-        const created = await createDriveFile();
-        setDriveSyncMeta({ fileId: created.id, profile, syncedAt: nowISO() });
-        return true;
-      }
-      state.driveFileId = found.id;
-      await ensureDriveClientToken();
-      const response = await gapi.client.drive.files.get({ fileId: found.id, alt: "media" });
-      const parsed = response?.result || {};
-      DB = normalizeImportedDB(parsed?.data || parsed || defaultDB());
-      const currentUser = ensurePrincipalUserFromProfile(profile);
-      state.currentUser = currentUser;
-      sessionStorage.setItem(SESSION_KEY, String(currentUser.id));
-      setDriveSyncMeta({ fileId: found.id, profile, syncedAt: nowISO() });
+  const profile = state.googleProfile || {};
+  const canReuseCachedId = canReuseDriveFileIdForProfile(profile);
+
+  if (!canReuseCachedId) {
+    state.driveFileId = "";
+    const meta = getDriveMeta();
+    meta.fileId = "";
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  }
+
+  let found = state.driveFileId ? { id: state.driveFileId } : await findDriveFileByName();
+
+  if (!found?.id) {
+    if (!createIfMissing) return false;
+    ensurePrincipalUserFromProfile(profile);
+    const created = await createDriveFile();
+    setDriveSyncMeta({ fileId: created.id, profile, syncedAt: nowISO() });
+    return true;
+  }
+
+  state.driveFileId = found.id;
+  await ensureDriveClientToken();
+
+  try {
+    const response = await gapi.client.drive.files.get({ fileId: found.id, alt: "media" });
+    const parsed = response?.result || {};
+    DB = normalizeImportedDB(parsed?.data || parsed || defaultDB());
+    const currentUser = ensurePrincipalUserFromProfile(profile);
+    state.currentUser = currentUser;
+    sessionStorage.setItem(SESSION_KEY, String(currentUser.id));
+    setDriveSyncMeta({ fileId: found.id, profile, syncedAt: nowISO() });
+    return true;
+  } catch (error) {
+    const msg = extractGoogleApiError(error, "");
+    const isMissing = /file not found|not found|404/i.test(msg);
+
+    if (!isMissing) throw error;
+
+    state.driveFileId = "";
+    const meta = getDriveMeta();
+    meta.fileId = "";
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+
+    found = await findDriveFileByName();
+
+    if (!found?.id) {
+      if (!createIfMissing) return false;
+      ensurePrincipalUserFromProfile(profile);
+      const created = await createDriveFile();
+      setDriveSyncMeta({ fileId: created.id, profile, syncedAt: nowISO() });
       return true;
     }
+
+    state.driveFileId = found.id;
+    const retry = await gapi.client.drive.files.get({ fileId: found.id, alt: "media" });
+    const parsed = retry?.result || {};
+    DB = normalizeImportedDB(parsed?.data || parsed || defaultDB());
+    const currentUser = ensurePrincipalUserFromProfile(profile);
+    state.currentUser = currentUser;
+    sessionStorage.setItem(SESSION_KEY, String(currentUser.id));
+    setDriveSyncMeta({ fileId: found.id, profile, syncedAt: nowISO() });
+    return true;
+  }
+}
 
     async function pushDBToDrive({ silent = false } = {}) {
       if (!state.currentUser?.googleSub || !hasValidGoogleSession()) {
@@ -2538,10 +2592,21 @@
           throw new Error("Acceso restringido. Esta cuenta no está autorizada para usar Agenda PMCT.");
         }
         saveGoogleSession(tokenResponse, profile);
-        state.googleProfile = profile;
-        state.currentUser = ensurePrincipalUserFromProfile(profile);
-        sessionStorage.setItem(SESSION_KEY, String(state.currentUser.id));
-        await pullDBFromDrive({ createIfMissing: true });
+state.googleProfile = profile;
+
+if (!canReuseDriveFileIdForProfile(profile)) {
+  state.driveFileId = "";
+  const meta = getDriveMeta();
+  meta.fileId = "";
+  meta.lastSyncedAt = "";
+  meta.ownerEmail = "";
+  meta.ownerGoogleSub = "";
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+}
+
+state.currentUser = ensurePrincipalUserFromProfile(profile);
+sessionStorage.setItem(SESSION_KEY, String(state.currentUser.id));
+await pullDBFromDrive({ createIfMissing: true });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
         showApp();
         toast(`Bienvenida, ${state.currentUser.displayName}.`, "success");
@@ -2557,9 +2622,14 @@
     state.googleAccessToken = "";
     state.googleProfile = null;
     state.googleSessionExpiresAt = 0;
+    state.driveFileId = "";
     closeProfileMenu();
     showLoginMode();
   }
+
+  updateAuthDriveStatus(friendlyMessage);
+  toast(friendlyMessage, "error");
+}
 
   updateAuthDriveStatus(friendlyMessage);
   toast(friendlyMessage, "error");
