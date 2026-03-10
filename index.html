@@ -1975,6 +1975,9 @@
       driveFileName: "calendario_psicologia_db.json",
       driveScope: "openid email profile https://www.googleapis.com/auth/drive.appdata"
     };
+    const AUTHORIZED_GOOGLE_EMAILS = [
+      "psic.pcisneros@gmail.com"
+    ];
     const GOOGLE_DRIVE_DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest";
     const ENABLE_LOCAL_FALLBACK_WHEN_GOOGLE_NOT_CONFIGURED = true;
     const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -2214,7 +2217,7 @@
       if (message) {
         els.authDriveStatus.textContent = message;
       } else if (isGoogleConfigured()) {
-        els.authDriveStatus.textContent = "Tus datos se cargarán desde Google Drive y se guardarán automáticamente.";
+        els.authDriveStatus.textContent = "Tus datos se cargarán desde Google Drive y se guardarán automáticamente. Acceso restringido a cuentas autorizadas.";
       } else if (ENABLE_LOCAL_FALLBACK_WHEN_GOOGLE_NOT_CONFIGURED) {
         els.authDriveStatus.textContent = "Falta configurar GOOGLE_CONFIG.clientId. Mientras tanto puedes entrar en modo local temporal para seguir probando la web.";
       } else {
@@ -2237,6 +2240,25 @@
         els.driveSyncNowBtn.textContent = state.currentUser?.googleSub ? "Sincronizar con Drive ahora" : "Sincronización Drive no disponible";
       }
       if (!state.currentUser) updateAuthDriveStatus();
+    }
+
+    function getAuthorizedGoogleEmails() {
+      return AUTHORIZED_GOOGLE_EMAILS.map(email => cleanEmail(email)).filter(Boolean);
+    }
+
+    function isAuthorizedGoogleEmail(email) {
+      const normalizedEmail = cleanEmail(email || "");
+      if (!normalizedEmail) return false;
+      return getAuthorizedGoogleEmails().includes(normalizedEmail);
+    }
+
+    async function revokeGoogleAccessToken(accessToken) {
+      try {
+        if (!(window.google && google.accounts && google.accounts.oauth2 && typeof google.accounts.oauth2.revoke === "function") || !accessToken) return;
+        await new Promise(resolve => google.accounts.oauth2.revoke(accessToken, () => resolve()));
+      } catch (error) {
+        console.warn("No fue posible revocar el token de Google.", error);
+      }
     }
 
     function ensurePrincipalUserFromProfile(profile = {}) {
@@ -2505,6 +2527,16 @@
         } catch (profileError) {
           console.warn("No fue posible leer el perfil de Google; se continuará con una cuenta principal genérica.", profileError);
         }
+        if (!isAuthorizedGoogleEmail(profile.email || "")) {
+          await revokeGoogleAccessToken(tokenResponse.access_token);
+          clearGoogleSession();
+          state.currentUser = null;
+          state.googleAccessToken = "";
+          state.googleProfile = null;
+          state.googleSessionExpiresAt = 0;
+          sessionStorage.removeItem(SESSION_KEY);
+          throw new Error("Acceso restringido. Esta cuenta no está autorizada para usar Agenda PMCT.");
+        }
         saveGoogleSession(tokenResponse, profile);
         state.googleProfile = profile;
         state.currentUser = ensurePrincipalUserFromProfile(profile);
@@ -2634,25 +2666,41 @@
     }
 
     function restoreSession() {
-      const savedId = Number(sessionStorage.getItem(SESSION_KEY));
-      if (savedId) {
-        const user = users().find(u => u.id === savedId);
-        if (user) state.currentUser = user;
-      }
+      state.currentUser = null;
       try {
         const rawGoogleSession = sessionStorage.getItem(GOOGLE_SESSION_KEY);
-        if (!rawGoogleSession) return;
+        if (!rawGoogleSession) {
+          sessionStorage.removeItem(SESSION_KEY);
+          return;
+        }
         const parsed = JSON.parse(rawGoogleSession);
         if (parsed?.accessToken && (!parsed.expiresAt || Date.now() < Number(parsed.expiresAt))) {
+          const restoredEmail = cleanEmail((parsed.profile && parsed.profile.email) || "");
+          if (!isAuthorizedGoogleEmail(restoredEmail)) {
+            clearGoogleSession();
+            state.currentUser = null;
+            sessionStorage.removeItem(SESSION_KEY);
+            updateAuthDriveStatus("Acceso restringido. Esta cuenta no está autorizada para usar Agenda PMCT.");
+            return;
+          }
           state.googleAccessToken = parsed.accessToken;
           state.googleProfile = parsed.profile || null;
           state.googleSessionExpiresAt = Number(parsed.expiresAt || 0);
+          const savedId = Number(sessionStorage.getItem(SESSION_KEY));
+          if (savedId) {
+            const user = users().find(u => u.id === savedId);
+            if (user && isAuthorizedGoogleEmail(user.email || restoredEmail)) {
+              state.currentUser = user;
+            }
+          }
         } else {
           clearGoogleSession();
+          sessionStorage.removeItem(SESSION_KEY);
         }
       } catch (error) {
         console.error("No fue posible restaurar la sesión de Google.", error);
         clearGoogleSession();
+        sessionStorage.removeItem(SESSION_KEY);
       }
     }
 
