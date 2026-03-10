@@ -2164,17 +2164,50 @@
       renderTimeSelect();
       applyDateConstraints();
       bindEvents();
-      restoreSession();
-      if (state.currentUser) {
-        if (canUseDriveSession()) {
-          syncFromDriveOnStartup().finally(showApp);
-        } else {
-          showApp();
+      function restoreSession() {
+        state.currentUser = null;
+        try {
+          const rawGoogleSession = sessionStorage.getItem(GOOGLE_SESSION_KEY);
+          if (!rawGoogleSession) {
+            sessionStorage.removeItem(SESSION_KEY);
+            return;
         }
-      } else {
-        showLoginMode();
-      }
+
+        const parsed = JSON.parse(rawGoogleSession);
+
+        if (parsed?.accessToken && (!parsed.expiresAt || Date.now() < Number(parsed.expiresAt))) {
+          const restoredEmail = cleanEmail((parsed.profile && parsed.profile.email) || "");
+
+          if (!isAuthorizedGoogleEmail(restoredEmail)) {
+            clearGoogleSession();
+            state.currentUser = null;
+            sessionStorage.removeItem(SESSION_KEY);
+            updateAuthDriveStatus("Acceso restringido. Esta cuenta no está autorizada para usar Agenda PMCT.");
+            return;
+          }
+
+          state.googleAccessToken = parsed.accessToken;
+          state.googleProfile = parsed.profile || null;
+          state.googleSessionExpiresAt = Number(parsed.expiresAt || 0);
+
+          const savedId = Number(sessionStorage.getItem(SESSION_KEY));
+          if (savedId) {
+            const user = users().find(u => u.id === savedId);
+            if (user && isAuthorizedGoogleEmail(user.email || restoredEmail)) {
+              state.currentUser = user;
+            }
+          }
+        } 
+        else {
+          clearGoogleSession();
+          sessionStorage.removeItem(SESSION_KEY);
+        }
+      } catch (error) {
+      console.error("No fue posible restaurar la sesión de Google.", error);
+      clearGoogleSession();
+      sessionStorage.removeItem(SESSION_KEY);
     }
+}
 
 
     function isGoogleConfigured() {
