@@ -1,18 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta name="theme-color" content="#6B3B73" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Agenda PMCT" />
-  <meta name="application-name" content="Agenda PMCT" />
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="icon" type="image/png" sizes="192x192" href="./agenda-pmct-icon-192.png" />
-  <link rel="apple-touch-icon" href="./agenda-pmct-apple-touch-icon.png" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agenda Psicología - PMCT</title>
+  <title>Calendario Psicología - WEB Final Estable</title>
   <style>
     :root {
       --primary: #6B3B73;
@@ -1390,6 +1381,16 @@
   </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://apis.google.com/js/api.js" async defer></script>
+
+<meta name="theme-color" content="#6B3B73" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Agenda PMCT" />
+<meta name="application-name" content="Agenda PMCT" />
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="192x192" href="./agenda-pmct-icon-192.png" />
+<link rel="apple-touch-icon" href="./agenda-pmct-apple-touch-icon.png" />
 </head>
 <body>
   <div id="authView" class="auth-shell">
@@ -2463,70 +2464,76 @@
     }
 
     async function pullDBFromDrive({ createIfMissing = true } = {}) {
-  const profile = state.googleProfile || {};
-  const canReuseCachedId = canReuseDriveFileIdForProfile(profile);
+      const profile = state.googleProfile || {};
+      const canReuseCachedId = canReuseDriveFileIdForProfile(profile);
 
-  if (!canReuseCachedId) {
-    state.driveFileId = "";
-    const meta = getDriveMeta();
-    meta.fileId = "";
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
-  }
+      if (!canReuseCachedId) {
+        state.driveFileId = "";
+        const meta = getDriveMeta();
+        meta.fileId = "";
+        meta.lastSyncedAt = "";
+        meta.ownerEmail = "";
+        meta.ownerGoogleSub = "";
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+      }
 
-  let found = state.driveFileId ? { id: state.driveFileId } : await findDriveFileByName();
+      let found = state.driveFileId ? { id: state.driveFileId } : await findDriveFileByName();
 
-  if (!found?.id) {
-    if (!createIfMissing) return false;
-    ensurePrincipalUserFromProfile(profile);
-    const created = await createDriveFile();
-    setDriveSyncMeta({ fileId: created.id, profile, syncedAt: nowISO() });
-    return true;
-  }
+      if (!found?.id) {
+        if (!createIfMissing) return false;
+        ensurePrincipalUserFromProfile(profile);
+        const created = await createDriveFile();
+        setDriveSyncMeta({ fileId: created.id, profile, syncedAt: nowISO() });
+        return true;
+      }
 
-  state.driveFileId = found.id;
-  await ensureDriveClientToken();
+      state.driveFileId = found.id;
+      await ensureDriveClientToken();
 
-  try {
-    const response = await gapi.client.drive.files.get({ fileId: found.id, alt: "media" });
-    const parsed = response?.result || {};
-    DB = normalizeImportedDB(parsed?.data || parsed || defaultDB());
-    const currentUser = ensurePrincipalUserFromProfile(profile);
-    state.currentUser = currentUser;
-    sessionStorage.setItem(SESSION_KEY, String(currentUser.id));
-    setDriveSyncMeta({ fileId: found.id, profile, syncedAt: nowISO() });
-    return true;
-  } catch (error) {
-    const msg = extractGoogleApiError(error, "");
-    const isMissing = /file not found|not found|404/i.test(msg);
+      try {
+        const response = await gapi.client.drive.files.get({ fileId: found.id, alt: "media" });
+        const parsed = response?.result || {};
+        DB = normalizeImportedDB(parsed?.data || parsed || defaultDB());
+        const currentUser = ensurePrincipalUserFromProfile(profile);
+        state.currentUser = currentUser;
+        sessionStorage.setItem(SESSION_KEY, String(currentUser.id));
+        setDriveSyncMeta({ fileId: found.id, profile, syncedAt: nowISO() });
+        return true;
+      } catch (error) {
+        const msg = extractGoogleApiError(error, "");
+        const isMissing = /file not found|not found|404/i.test(msg);
 
-    if (!isMissing) throw error;
+        if (!isMissing) throw error;
 
-    state.driveFileId = "";
-    const meta = getDriveMeta();
-    meta.fileId = "";
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+        state.driveFileId = "";
+        const meta = getDriveMeta();
+        meta.fileId = "";
+        meta.lastSyncedAt = "";
+        meta.ownerEmail = "";
+        meta.ownerGoogleSub = "";
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
 
-    found = await findDriveFileByName();
+        found = await findDriveFileByName();
 
-    if (!found?.id) {
-      if (!createIfMissing) return false;
-      ensurePrincipalUserFromProfile(profile);
-      const created = await createDriveFile();
-      setDriveSyncMeta({ fileId: created.id, profile, syncedAt: nowISO() });
-      return true;
+        if (!found?.id) {
+          if (!createIfMissing) return false;
+          ensurePrincipalUserFromProfile(profile);
+          const created = await createDriveFile();
+          setDriveSyncMeta({ fileId: created.id, profile, syncedAt: nowISO() });
+          return true;
+        }
+
+        state.driveFileId = found.id;
+        const retry = await gapi.client.drive.files.get({ fileId: found.id, alt: "media" });
+        const parsed = retry?.result || {};
+        DB = normalizeImportedDB(parsed?.data || parsed || defaultDB());
+        const currentUser = ensurePrincipalUserFromProfile(profile);
+        state.currentUser = currentUser;
+        sessionStorage.setItem(SESSION_KEY, String(currentUser.id));
+        setDriveSyncMeta({ fileId: found.id, profile, syncedAt: nowISO() });
+        return true;
+      }
     }
-
-    state.driveFileId = found.id;
-    const retry = await gapi.client.drive.files.get({ fileId: found.id, alt: "media" });
-    const parsed = retry?.result || {};
-    DB = normalizeImportedDB(parsed?.data || parsed || defaultDB());
-    const currentUser = ensurePrincipalUserFromProfile(profile);
-    state.currentUser = currentUser;
-    sessionStorage.setItem(SESSION_KEY, String(currentUser.id));
-    setDriveSyncMeta({ fileId: found.id, profile, syncedAt: nowISO() });
-    return true;
-  }
-}
 
     async function pushDBToDrive({ silent = false } = {}) {
       if (!state.currentUser?.googleSub || !hasValidGoogleSession()) {
@@ -2601,48 +2608,45 @@
           throw new Error("Acceso restringido. Esta cuenta no está autorizada para usar Agenda PMCT.");
         }
         saveGoogleSession(tokenResponse, profile);
-state.googleProfile = profile;
+        state.googleProfile = profile;
 
-if (!canReuseDriveFileIdForProfile(profile)) {
-  state.driveFileId = "";
-  const meta = getDriveMeta();
-  meta.fileId = "";
-  meta.lastSyncedAt = "";
-  meta.ownerEmail = "";
-  meta.ownerGoogleSub = "";
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
-}
+        if (!canReuseDriveFileIdForProfile(profile)) {
+          state.driveFileId = "";
+          const meta = getDriveMeta();
+          meta.fileId = "";
+          meta.lastSyncedAt = "";
+          meta.ownerEmail = "";
+          meta.ownerGoogleSub = "";
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+        }
 
-state.currentUser = ensurePrincipalUserFromProfile(profile);
-sessionStorage.setItem(SESSION_KEY, String(state.currentUser.id));
-await pullDBFromDrive({ createIfMissing: true });
+        state.currentUser = ensurePrincipalUserFromProfile(profile);
+        sessionStorage.setItem(SESSION_KEY, String(state.currentUser.id));
+        await pullDBFromDrive({ createIfMissing: true });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
         showApp();
         toast(`Bienvenida, ${state.currentUser.displayName}.`, "success");
-    } catch (error) {
-  console.error(error);
-  const rawMessage = extractGoogleApiError(error, "No fue posible conectar con Google Drive.");
-  const friendlyMessage = rawMessage || "No fue posible conectar con Google Drive.";
+      } catch (error) {
+        console.error(error);
+        const rawMessage = extractGoogleApiError(error, "No fue posible conectar con Google Drive.");
+        const friendlyMessage = rawMessage || "No fue posible conectar con Google Drive.";
 
-  if (/acceso restringido|no está autorizada/i.test(friendlyMessage)) {
-    sessionStorage.removeItem(SESSION_KEY);
-    clearGoogleSession();
-    state.currentUser = null;
-    state.googleAccessToken = "";
-    state.googleProfile = null;
-    state.googleSessionExpiresAt = 0;
-    state.driveFileId = "";
-    closeProfileMenu();
-    showLoginMode();
-  }
+        if (/acceso restringido|no está autorizada/i.test(friendlyMessage)) {
+          sessionStorage.removeItem(SESSION_KEY);
+          clearGoogleSession();
+          state.currentUser = null;
+          state.googleAccessToken = "";
+          state.googleProfile = null;
+          state.googleSessionExpiresAt = 0;
+          state.driveFileId = "";
+          closeProfileMenu();
+          showLoginMode();
+        }
 
-  updateAuthDriveStatus(friendlyMessage);
-  toast(friendlyMessage, "error");
-}
-
-  updateAuthDriveStatus(friendlyMessage);
-  toast(friendlyMessage, "error");
-}
+        updateAuthDriveStatus(friendlyMessage);
+        toast(friendlyMessage, "error");
+      }
+    }
 
     function enterLocalFallbackMode() {
       const user = ensureLocalPrincipalUser();
@@ -3897,15 +3901,6 @@ function renderCalendar() {
     ${tableRows}
   </tbody>
 </table>
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js").catch((error) => {
-        console.error("No fue posible registrar el service worker de Agenda PMCT.", error);
-      });
-    });
-  }
-</script>
 </body>
 </html>`;
 
@@ -5390,5 +5385,16 @@ function renderCalendar() {
     }
 
   </script>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+          console.error("No fue posible registrar el service worker de Agenda PMCT.", error);
+        });
+      });
+    }
+  </script>
+
 </body>
 </html>
