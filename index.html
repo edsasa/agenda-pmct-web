@@ -2545,14 +2545,25 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
         showApp();
         toast(`Bienvenida, ${state.currentUser.displayName}.`, "success");
-      } catch (error) {
-        console.error(error);
-        const rawMessage = extractGoogleApiError(error, "No fue posible conectar con Google Drive.");
-        const friendlyMessage = rawMessage || "No fue posible conectar con Google Drive.";
-        updateAuthDriveStatus(friendlyMessage);
-        toast(friendlyMessage, "error");
-      }
-    }
+    } catch (error) {
+  console.error(error);
+  const rawMessage = extractGoogleApiError(error, "No fue posible conectar con Google Drive.");
+  const friendlyMessage = rawMessage || "No fue posible conectar con Google Drive.";
+
+  if (/acceso restringido|no está autorizada/i.test(friendlyMessage)) {
+    sessionStorage.removeItem(SESSION_KEY);
+    clearGoogleSession();
+    state.currentUser = null;
+    state.googleAccessToken = "";
+    state.googleProfile = null;
+    state.googleSessionExpiresAt = 0;
+    closeProfileMenu();
+    showLoginMode();
+  }
+
+  updateAuthDriveStatus(friendlyMessage);
+  toast(friendlyMessage, "error");
+}
 
     function enterLocalFallbackMode() {
       const user = ensureLocalPrincipalUser();
