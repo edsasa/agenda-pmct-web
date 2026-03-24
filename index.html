@@ -2735,8 +2735,11 @@
         input.addEventListener("input", () => {
           const start = input.selectionStart;
           const end = input.selectionEnd;
-          input.value = sanitizePersonName(input.value);
+          input.value = sanitizePersonNameLive(input.value);
           try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+        input.addEventListener("blur", () => {
+          input.value = sanitizePersonName(input.value);
         });
       });
       [els.patientCompany, els.insuranceName].forEach(input => {
@@ -2744,8 +2747,11 @@
         input.addEventListener("input", () => {
           const start = input.selectionStart;
           const end = input.selectionEnd;
-          input.value = sanitizeBusinessName(input.value);
+          input.value = sanitizeBusinessNameLive(input.value);
           try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+        input.addEventListener("blur", () => {
+          input.value = sanitizeBusinessName(input.value);
         });
       });
       els.patientEmail.addEventListener("blur", () => { els.patientEmail.value = els.patientEmail.value.trim().toLowerCase(); clearFieldError(els.patientEmail); });
@@ -4284,22 +4290,34 @@ function renderCalendar() {
       return /\d/.test(String(value ?? ""));
     }
 
-    function sanitizePersonName(value) {
-      return String(value ?? "")
-        .toLocaleUpperCase('es-MX')
+    function sanitizePersonNameLive(value) {
+      const raw = String(value ?? "").toLocaleUpperCase('es-MX');
+      const keepTrailingSpace = /\s$/.test(raw);
+      const cleaned = raw
         .replace(/\d+/g, "")
         .replace(/[^A-ZÁÉÍÓÚÜÑ'’\-. ]/g, "")
         .replace(/\s+/g, " ")
         .trim();
+      return keepTrailingSpace && cleaned ? `${cleaned} ` : cleaned;
     }
 
-    function sanitizeBusinessName(value) {
-      return String(value ?? "")
-        .toLocaleUpperCase('es-MX')
+    function sanitizePersonName(value) {
+      return sanitizePersonNameLive(value).trim();
+    }
+
+    function sanitizeBusinessNameLive(value) {
+      const raw = String(value ?? "").toLocaleUpperCase('es-MX');
+      const keepTrailingSpace = /\s$/.test(raw);
+      const cleaned = raw
         .replace(/\d+/g, "")
         .replace(/[^A-ZÁÉÍÓÚÜÑ&'’\-.,()/ ]/g, "")
         .replace(/\s+/g, " ")
         .trim();
+      return keepTrailingSpace && cleaned ? `${cleaned} ` : cleaned;
+    }
+
+    function sanitizeBusinessName(value) {
+      return sanitizeBusinessNameLive(value).trim();
     }
 
     function normalizePhone(value) {
@@ -4409,8 +4427,11 @@ function renderCalendar() {
         input.addEventListener("input", () => {
           const start = input.selectionStart;
           const end = input.selectionEnd;
-          input.value = sanitizePersonName(input.value);
+          input.value = sanitizePersonNameLive(input.value);
           try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+        input.addEventListener("blur", () => {
+          input.value = sanitizePersonName(input.value);
         });
       });
       [els.patientCompany, els.insuranceName].forEach(input => {
@@ -4418,8 +4439,11 @@ function renderCalendar() {
         input.addEventListener("input", () => {
           const start = input.selectionStart;
           const end = input.selectionEnd;
-          input.value = sanitizeBusinessName(input.value);
+          input.value = sanitizeBusinessNameLive(input.value);
           try { input.setSelectionRange(start, end); } catch (_) {}
+        });
+        input.addEventListener("blur", () => {
+          input.value = sanitizeBusinessName(input.value);
         });
       });
       els.patientEmail.addEventListener("blur", () => { els.patientEmail.value = els.patientEmail.value.trim().toLowerCase(); clearFieldError(els.patientEmail); });
